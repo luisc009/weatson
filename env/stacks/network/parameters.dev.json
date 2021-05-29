@@ -1,0 +1,42 @@
+[
+    {
+        "ParameterKey": "Environment",
+        "ParameterValue": "dev"
+    },
+    {
+        "ParameterKey": "Project",
+        "ParameterValue": "luisc09"
+    },
+    {
+        "ParameterKey": "CIDR",
+        "ParameterValue": "10.0.0.0/16"
+    },
+    {
+        "ParameterKey": "PublicSubnet1CIDR",
+        "ParameterValue": "10.0.0.0/20"
+    },
+    {
+        "ParameterKey": "PublicSubnet2CIDR",
+        "ParameterValue": "10.0.16.0/20"
+    },
+    {
+        "ParameterKey": "PrivateSubnet1CIDR",
+        "ParameterValue": "10.0.32.0/20"
+    },
+    {
+        "ParameterKey": "PrivateSubnet2CIDR",
+        "ParameterValue": "10.0.48.0/20"
+    },
+    {
+        "ParameterKey": "NatCIDR",
+        "ParameterValue": "10.0.32.0/19"
+    },
+    {
+        "ParameterKey": "ImageId",
+        "ParameterValue": "ami-00a9d4a05375b2763"
+    },
+    {
+        "ParameterKey": "SshKey",
+        "ParameterValue": "test"
+    }
+]

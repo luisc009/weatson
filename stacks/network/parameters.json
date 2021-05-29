@@ -1,0 +1,42 @@
+[
+    {
+        "ParameterKey": "Environment",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "Project",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "CIDR",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "PublicSubnet1CIDR",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "PublicSubnet2CIDR",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "PrivateSubnet1CIDR",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "PrivateSubnet2CIDR",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "NatCIDR",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "ImageId",
+        "ParameterValue": "set-me-please"
+    },
+    {
+        "ParameterKey": "SshKey",
+        "ParameterValue": "set-me-please"
+    }
+]

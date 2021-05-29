@@ -1,0 +1,389 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description:
+  "Template creates a VPC with an Internet Gateway and a NAT Instance,
+  two public subnets, two private subnets and all the routing needed
+  to grant internet access to the private subnets."
+Parameters:
+  Project:
+    Type: String
+    Description: The name of the project
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - stg
+      - prod
+    Description: Environment to create.
+  CIDR:
+    Type: String
+    Description: CIDR of VPC
+  PublicSubnet1CIDR:
+    Type: String
+    Description: IP Range for the public subnet in the first availability zone
+  PublicSubnet2CIDR:
+    Type: String
+    Description: IP Range for the public subnet in the second availabilty zone
+  PrivateSubnet1CIDR:
+    Type: String
+    Description: IP Range for the private subnet in the first availability zone
+  PrivateSubnet2CIDR:
+    Type: String
+    Description: IP Range for the private subnet in the second availabilty zone
+  NatCIDR:
+    Type: String
+    Description: The IP Range for the private subnets that will be routed through the NAT
+  ImageId:
+    Type: String
+    Description: The AMI id of the NAT instance
+  SshKey:
+    Type: String
+    Description: The name of the SSH key to access to the instances
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !Ref CIDR
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-vpc-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-internet-gateway-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-public-subnet-az1-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-public-subnet-az2-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-private-subnet-az1-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-private-subnet-az2-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-public-route-table-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  NatInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Rules to manage traffic
+      SecurityGroupIngress:
+        - CidrIp: !Ref NatCIDR
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+        - CidrIp: !Ref NatCIDR
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+        - CidrIp: !Ref NatCIDR
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+        - CidrIp: !Ref NatCIDR
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-nat-security-group-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  NatInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Ref ImageId
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-nat-instance-az1-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+      KeyName: !Ref SshKey
+      NetworkInterfaces:
+        - SubnetId: !Ref PublicSubnet1
+          GroupSet:
+            - !Ref NatInstanceSecurityGroup
+          AssociatePublicIpAddress: true
+          DeviceIndex: 0
+
+  # BastionSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     VpcId: !Ref VPC
+  #     GroupDescription: Allow access from luisc009 Network
+  #     SecurityGroupIngress:
+  #       - CidrIp: 189.203.236.74/32
+  #         FromPort: 22
+  #         ToPort: 22
+  #         IpProtocol: tcp
+  #         Description: luisc009 Network
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${Project}-bastion-security-group-${Environment}
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Project
+  #         Value: !Ref Project
+
+  # BastionInstance:
+  #   Type: AWS::EC2::Instance
+  #   Properties:
+  #     InstanceType: t2.micro
+  #     ImageId: ami-062f7200baf2fa504
+  #     SourceDestCheck: false
+  #     IamInstanceProfile: !Ref BastionInstanceProfile
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${Project}-bastion-instance-az2-${Environment}
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Project
+  #         Value: !Ref Project
+  #     KeyName: !Ref SshKey
+  #     NetworkInterfaces:
+  #       - SubnetId: !Ref PublicSubnet2
+  #         GroupSet:
+  #           - !Ref BastionSecurityGroup
+  #           - !GetAtt ["VPC", "DefaultSecurityGroup"]
+  #         AssociatePublicIpAddress: true
+  #         DeviceIndex: 0
+
+  # BastionRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     RoleName: BastionSSMRole
+  #     AssumeRolePolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service:
+  #             - ec2.amazonaws.com
+  #           Action:
+  #           - sts:AssumeRole
+
+  # BastionRolePolicies:
+  #   Type: AWS::IAM::Policy
+  #   Properties:
+  #     PolicyName: rolepolicy
+  #     PolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Action:
+  #           - ssm:UpdateInstanceInformation
+  #           - ssmmessages:CreateControlChannel
+  #           - ssmmessages:CreateDataChannel
+  #           - ssmmessages:OpenControlChannel
+  #           - ssmmessages:OpenDataChannel
+  #           Resource: "*"
+  #         - Effect: Allow
+  #           Action:
+  #           - s3:GetEncryptionConfiguration
+  #           Resource: "*"
+  #     Roles:
+  #     - !Ref BastionRole
+
+  # BastionInstanceProfile:
+  #   Type: AWS::IAM::InstanceProfile
+  #   Properties:
+  #     Roles:
+  #     - !Ref BastionRole
+
+  # BastionEIP:
+  #   Type: AWS::EC2::EIP
+  #   Properties:
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${Project}-bastion-eip-${Environment}
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Project
+  #         Value: !Ref Project
+
+  # BastionEIPAssociaton:
+  #   Type: AWS::EC2::EIPAssociation
+  #   Properties:
+  #     InstanceId: !Ref 'BastionInstance'
+  #     EIP: !Ref 'BastionEIP'
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${Project}-private-route-table-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref Project
+
+  DefaultPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref NatInstance
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2
+
+Outputs:
+  VpcId:
+    Description: The Id of the created VPC
+    Value: !Ref "VPC"
+    Export:
+      Name: !Join [":", [!Ref "Project", "VpcId", !Ref Environment]]
+  PublicSubnets:
+    Description: A comma-separated list of the Public subnets
+    Value: !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+  PrivateSubnets:
+    Description: A comma-separated list of the Private subnets
+    Value: !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
+  PublicSubnet1:
+    Description: The Id of the created Public subnet in the first availability zone
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Join [":", [!Ref "Project", PublicSubnet1, !Ref Environment]]
+  PublicSubnet2:
+    Description: The Id of the created Public subnet in the second availability zone
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Join [":", [!Ref "Project", PublicSubnet2, !Ref Environment]]
+  PrivateSubnet1:
+    Description: The Id of the created Private subnet in the first availability zone
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Join [":", [!Ref "Project", PrivateSubnet1, !Ref Environment]]
+  PrivateSubnet2:
+    Description: The Id of the created Private subnet in the second availability zone
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Join [":", [!Ref "Project", PrivateSubnet2, !Ref Environment]]
+  DefaultSecurityGroup:
+    Description: Default Security Group
+    Value: !GetAtt ["VPC", "DefaultSecurityGroup"]
+    Export:
+      Name:
+        !Join [":", [!Ref "Project", DefaultSecurityGroup, !Ref Environment]]
+  # BastionDNS:
+  #   Description: The DNS for the Bastion
+  #   Value: !GetAtt ["BastionInstance", "PublicDnsName"]
