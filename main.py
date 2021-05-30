@@ -28,120 +28,137 @@ client = boto3.client("cloudformation")
 # TODO: Next session
 # 1. Find a way to manage the exceptions and its propagation
 # 2. Integrate SOPS
-# 3. Find a way better way to init the variables configuration
-# 4. Find a better way to call validate and call the operations
+# 4. Find a better way to call the operations
 # 8. Improve the way that waiter is called.
 # 9. Improve the name of the read_file function
 
 
-def validate_cloudformation_template(template_path):
-    with open(template_path, "r") as template_file:
-        template_body = template_file.read()
+class Stack:
+    def __init__(self, stack, operation):
+        self.stack = stack
+        self.operation = operation
+
+        # Fill variables from the environment variables
+        # TODO: Merge this two variables with the parameters so we can override whatever is in the parameters.json
+        self.project = os.environ.get("PROJECT", "luisc009")
+        self.environment = os.environ.get("ENVIRONMENT", "dev")
+
+        # Supportive variables
+        self.stack_path = os.path.join("stacks", self.stack)
+        self.stack_name = f"{self.project}-{self.stack}-{self.environment}"
+        self.stack_template_file = os.path.join(self.stack_path, "template.yaml")
+        self.stack_parameters_file = os.path.join(
+            "env", "stacks", self.stack, f"parameters.{self.environment}.json"
+        )
+        self.stack_tmp_parameters_file = os.path.join("/", "tmp", "parameters.json")
+
+        # Git variables, used to generate the change_set_name
+        self.commit = Repo().head.commit.hexsha[:6]
+
+        self.parameters = self.build_cloudformation_parameters()
+
+    def validate_cloudformation_template(self):
+        with open(self.stack_template_file, "r") as template_file:
+            template_body = template_file.read()
+            try:
+                r = client.validate_template(TemplateBody=template_body)
+            except botocore.exceptions.ClientError as error:
+                logger.error("An error happened validating the template %s", error)
+                sys.exit(errno.EINVAL)
+
+    def read_file(self, file_path):
+        with open(file_path, "r") as file:
+            return file.read()
+
+    def build_cloudformation_parameters(self):
+        parameters = {"StackName": self.stack_name}
+
+        # if operation is create, update
+        # include template and parameters
+        if self.operation in ["create", "update", "create_change_set"]:
+            parameters["TemplateBody"] = self.read_file(self.stack_template_file)
+            parameters["Parameters"] = json.loads(
+                self.read_file(self.stack_parameters_file)
+            )
+
+        # if operation is create_change_set
+        # include ChangeSetName
+        if self.operation in [
+            "create_change_set",
+            "delete_change_set",
+            "execute_change_set",
+        ]:
+            parameters["ChangeSetName"] = f"{self.stack_name}-{self.commit}"
+
+        return parameters
+
+    # creates a fresh new stack
+    def create_stack(self):
         try:
-            r = client.validate_template(TemplateBody=template_body)
+            client.create_stack(**self.parameters)
+        except client.exceptions.AlreadyExistsException as error:
+            logger.error("Stack %s already exists", self.stack_name)
+            sys.exit(errno.EPERM)
+        return "stack_create_complete"
+
+    # deletes an active stack
+    def delete_stack(self):
+        client.delete_stack(**self.parameters)
+        return "stack_delete_complete"
+
+    def update_stack(self):
+        try:
+            client.update_stack(**self.parameters)
         except botocore.exceptions.ClientError as error:
-            logger.error("An error happened validating the template %s", error)
+            logger.error(
+                "An error occurred when updating %s, %s", self.stack_name, error
+            )
             sys.exit(errno.EINVAL)
+        return "stack_update_complete"
 
+    def create_change_set(self):
+        try:
+            client.create_change_set(**self.parameters)
+        except botocore.exceptions.ClientError as error:
+            logger.error(
+                "An error occurred when creating %s, %s",
+                self.parameters["ChangeSetName"],
+                error,
+            )
+            sys.exit(errno.EINVAL)
+        return "change_set_create_complete"
 
-def read_file(file_path):
-    with open(file_path, "r") as file:
-        return file.read()
+    def delete_change_set(self):
+        client.delete_change_set(**self.parameters)
 
+    def execute_change_set(self):
+        try:
+            client.execute_change_set(**self.parameters)
+        except client.exceptions.ChangeSetNotFoundException as error:
+            logger.error(
+                "Change set %s was not found", self.parameters["ChangeSetName"]
+            )
+            sys.exit(errno.EINVAL)
+        return "stack_update_complete"
 
-def build_cloudformation_parameters(stack_name, **kwargs):
-    parameters = {"StackName": stack_name}
-    if "change_set_name" in kwargs and kwargs.get("change_set_name") is not None:
-        parameters["ChangeSetName"] = kwargs.get("change_set_name")
-    if "template_path" in kwargs:
-        parameters["TemplateBody"] = read_file(kwargs.get("template_path"))
-    if "parameters_path" in kwargs:
-        parameters["Parameters"] = json.loads(read_file(kwargs.get("parameters_path")))
-    return parameters
+    def wait(self, waiter_name):
+        logger.info("waiting for operation %s to complete", waiter_name)
+        waiter = client.get_waiter(waiter_name)
+        try:
+            # TODO: Fix this, it should use the paremeters provided by the build_cloudformation_parameters
+            parameters = {"StackName": self.stack_name}
+            if "change_set" in waiter_name:
+                parameters["ChangeSetName"] = f"{self.stack_name}-{self.commit}"
+            waiter.wait(**parameters)
+            logger.info(f"operation {operation} finished!")
+        except botocore.exceptions.WaiterError as error:
+            logger.error(
+                "An error happened waiting for the operation %s, %s", operation, error
+            )
 
 
 # TODO: Support decrypt of the parameters file
 # def generate_parameters(parameters_path):
-
-# creates a fresh new stack
-def create_stack(stack_name, template_path, parameters_path):
-    parameters = build_cloudformation_parameters(
-        stack_name, template_path=template_path, parameters_path=parameters_path
-    )
-    try:
-        client.create_stack(**parameters)
-    except client.exceptions.AlreadyExistsException as error:
-        logger.error("Stack %s already exists", stack_name)
-        sys.exit(errno.EPERM)
-    return "stack_create_complete"
-
-
-# deletes an active stack
-def delete_stack(stack_name):
-    parameters = build_cloudformation_parameters(stack_name)
-    client.delete_stack(**parameters)
-    return "stack_delete_complete"
-
-
-def update_stack(stack_name, template_path, parameters_path):
-    parameters = build_cloudformation_parameters(
-        stack_name, template_path=template_path, parameters_path=parameters_path
-    )
-    try:
-        client.update_stack(**parameters)
-    except botocore.exceptions.ClientError as error:
-        logger.error("An error occurred when updating %s, %s", stack_name, error)
-        sys.exit(errno.EINVAL)
-    return "stack_update_complete"
-
-
-def create_change_set(stack_name, change_set_name, template_path, parameters_path):
-    parameters = build_cloudformation_parameters(
-        stack_name,
-        change_set_name=change_set_name,
-        template_path=template_path,
-        parameters_path=parameters_path,
-    )
-    try:
-        client.create_change_set(**parameters)
-    except botocore.exceptions.ClientError as error:
-        logger.error("An error occurred when creating %s, %s", change_set_name, error)
-        sys.exit(errno.EINVAL)
-    return "change_set_create_complete"
-
-
-def delete_change_set(stack_name, change_set_name):
-    parameters = build_cloudformation_parameters(
-        stack_name, change_set_name=change_set_name
-    )
-    client.delete_change_set(**parameters)
-
-
-def execute_change_set(stack_name, change_set_name):
-    parameters = build_cloudformation_parameters(
-        stack_name, change_set_name=change_set_name
-    )
-    try:
-        client.execute_change_set(**parameters)
-    except client.exceptions.ChangeSetNotFoundException as error:
-        logger.error("Change set %s was not found", change_set_name)
-        sys.exit(errno.EINVAL)
-    return "stack_update_complete"
-
-
-def wait(stack_name, waiter_name, change_set_name=None):
-    logger.info("waiting for operation %s to complete", waiter_name)
-    parameters = build_cloudformation_parameters(
-        stack_name, change_set_name=change_set_name
-    )
-    waiter = client.get_waiter(waiter_name)
-    try:
-        waiter.wait(**parameters)
-        logger.info(f"operation {operation} finished!")
-    except botocore.exceptions.WaiterError as error:
-        logger.error(
-            "An error happened waiting for the operation %s, %s", operation, error
-        )
 
 
 def usage(info, err):
@@ -190,54 +207,29 @@ def args_validator():
 
 
 args_validator()
-
-# TODO: Merge this two variables with the parameters so we can override whatever is in the parameters.json
-project = os.environ.get("PROJECT", "luisc009")
-environment = os.environ.get("ENVIRONMENT", "dev")
-
-
-stack = sys.argv[1]
 operation = sys.argv[2]
-stack_path = os.path.join("stacks", stack)
-stack_name = f"{project}-{stack}-{environment}"
-stack_template_file = os.path.join(stack_path, "template.yaml")
-stack_parameters_file = os.path.join(
-    "env", "stacks", stack, f"parameters.{environment}.json"
-)
-stack_tmp_parameters_file = os.path.join("/", "tmp", "parameters.json")
 
-validate_cloudformation_template(stack_template_file)
+stack = Stack(sys.argv[1], sys.argv[2])
 
-repo = Repo()
-commit = repo.head.commit.hexsha[:6]
-change_set_name = None
+stack.validate_cloudformation_template()
 
 if operation == "create":
-    waiter_name = create_stack(stack_name, stack_template_file, stack_parameters_file)
+    waiter_name = stack.create_stack()
 
 if operation == "delete":
-    waiter_name = delete_stack(stack_name)
+    waiter_name = stack.delete_stack()
 
 if operation == "update":
-    waiter_name = update_stack(stack_name, stack_template_file, stack_parameters_file)
+    waiter_name = stack.update_stack()
 
 if operation == "create_change_set":
-    change_set_name = f"{stack_name}-{commit}"
-    waiter_name = create_change_set(
-        stack_name,
-        change_set_name,
-        stack_template_file,
-        stack_parameters_file,
-    )
+    waiter_name = stack.create_change_set()
 
 if operation == "delete_change_set":
-    change_set_name = f"{stack_name}-{commit}"
-    waiter_name = delete_change_set(stack_name, change_set_name)
+    waiter_name = stack.delete_change_set()
     sys.exit(0)
 
 if operation == "execute_change_set":
-    change_set_name = f"{stack_name}-{commit}"
-    waiter_name = execute_change_set(stack_name, change_set_name)
-    change_set_name = None
+    waiter_name = stack.execute_change_set()
 
-wait(stack_name, waiter_name, change_set_name)
+stack.wait(waiter_name)
