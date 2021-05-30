@@ -30,7 +30,6 @@ client = boto3.client("cloudformation")
 # 2. Integrate SOPS
 # 3. Find a way better way to init the variables configuration
 # 4. Find a better way to call validate and call the operations
-# 5. Fix TODO for exit codes
 # 8. Improve the way that waiter is called.
 # 9. Improve the name of the read_file function
 
@@ -42,8 +41,7 @@ def validate_cloudformation_template(template_path):
             r = client.validate_template(TemplateBody=template_body)
         except botocore.exceptions.ClientError as error:
             logger.error("An error happened validating the template %s", error)
-            # TODO: look for the right exit code
-            sys.exit(1)
+            sys.exit(errno.EINVAL)
 
 
 def read_file(file_path):
@@ -74,8 +72,7 @@ def create_stack(stack_name, template_path, parameters_path):
         client.create_stack(**parameters)
     except client.exceptions.AlreadyExistsException as error:
         logger.error("Stack %s already exists", stack_name)
-        # TODO: look for the right exit code
-        sys.exit(1)
+        sys.exit(errno.EPERM)
     return "stack_create_complete"
 
 
@@ -94,8 +91,7 @@ def update_stack(stack_name, template_path, parameters_path):
         client.update_stack(**parameters)
     except botocore.exceptions.ClientError as error:
         logger.error("An error occurred when updating %s, %s", stack_name, error)
-        # TODO: look for the right exit code
-        sys.exit(1)
+        sys.exit(errno.EINVAL)
     return "stack_update_complete"
 
 
@@ -110,8 +106,7 @@ def create_change_set(stack_name, change_set_name, template_path, parameters_pat
         client.create_change_set(**parameters)
     except botocore.exceptions.ClientError as error:
         logger.error("An error occurred when creating %s, %s", change_set_name, error)
-        # TODO: look for the right exit code
-        sys.exit(1)
+        sys.exit(errno.EINVAL)
     return "change_set_create_complete"
 
 
@@ -130,8 +125,7 @@ def execute_change_set(stack_name, change_set_name):
         client.execute_change_set(**parameters)
     except client.exceptions.ChangeSetNotFoundException as error:
         logger.error("Change set %s was not found", change_set_name)
-        # TODO: look for the right exit code
-        sys.exit(1)
+        sys.exit(errno.EINVAL)
     return "stack_update_complete"
 
 
