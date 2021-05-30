@@ -24,7 +24,6 @@ client = boto3.client("cloudformation")
 # 4. Find a better way to call validate and call the operations
 # 5. Fix TODO for exit codes
 # 6. Implement logger
-# 7. Add change sets operations to the usage info
 # 8. Improve the way that waiter is called.
 # 9. Improve the name of the read_file function
 
@@ -149,13 +148,19 @@ Usage:
 
 python main stack-name <command>
 
-Commands:
-create            - Starts the creation of the stack.
-create_change_set - Starts the creation of one Change set
-update            - Starts the update on an already created stack.
-delete            - Starts to delete an already created stack.
+Commands to work with Stacks:
 
-The stack-name is the name of the folder inside stacks/
+create              - Creates a new stack based on the environment and the stack name
+update              - Updates an already created stack
+delete              - Deletes an already created stack
+
+Commands to work with Change Sets:
+
+create_change_set   - Creates a new change set using the stack name and the commit's SHA as change set name
+execute_change_set  - Executes the current change set
+delete_change_set   - Delete the current change set
+
+The stack-name is the name of the stack's folder inside stacks/
 E.g.
 python main network create
     """
