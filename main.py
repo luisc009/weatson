@@ -29,8 +29,8 @@ client = boto3.client("cloudformation")
 # 1. Find a way to manage the exceptions and its propagation
 # 2. Integrate SOPS
 # 4. Find a better way to call the operations
-# 8. Improve the way that waiter is called.
 # 9. Improve the name of the read_file function
+# 10. Fix parameters for waiters
 
 
 class Stack:
@@ -55,6 +55,7 @@ class Stack:
         # Git variables, used to generate the change_set_name
         self.commit = Repo().head.commit.hexsha[:6]
 
+        # Generate the parameters for the CloudFormation operation
         self.parameters = self.build_cloudformation_parameters()
 
     def validate_cloudformation_template(self):
@@ -205,7 +206,7 @@ def args_validator():
             "PROJECT or ENVIRONMENT are not set, falling back to default values"
         )
 
-
+# Run validation before creating
 args_validator()
 operation = sys.argv[2]
 
