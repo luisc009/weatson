@@ -26,9 +26,7 @@ OPERATIONS = [
 client = boto3.client("cloudformation")
 
 # TODO: Next session
-# 1. Find a way to manage the exceptions and its propagation
 # 2. Integrate SOPS
-# 4. Find a better way to call the operations
 # 9. Improve the name of the read_file function
 # 10. Fix parameters for waiters
 
@@ -99,7 +97,7 @@ class Stack:
             client.create_stack(**self.parameters)
         except client.exceptions.AlreadyExistsException as error:
             logger.error("Stack %s already exists", self.stack_name)
-            sys.exit(errno.EPERM)
+            raise Exception(error)
         return "stack_create_complete"
 
     # deletes an active stack
@@ -114,7 +112,7 @@ class Stack:
             logger.error(
                 "An error occurred when updating %s, %s", self.stack_name, error
             )
-            sys.exit(errno.EINVAL)
+            raise Exception(error)
         return "stack_update_complete"
 
     def create_change_set(self):
@@ -126,7 +124,7 @@ class Stack:
                 self.parameters["ChangeSetName"],
                 error,
             )
-            sys.exit(errno.EINVAL)
+            raise Exception(error)
         return "change_set_create_complete"
 
     def delete_change_set(self):
@@ -139,7 +137,7 @@ class Stack:
             logger.error(
                 "Change set %s was not found", self.parameters["ChangeSetName"]
             )
-            sys.exit(errno.EINVAL)
+            raise Exception(error)
         return "stack_update_complete"
 
     def wait(self, waiter_name):
@@ -156,6 +154,7 @@ class Stack:
             logger.error(
                 "An error happened waiting for the operation %s, %s", operation, error
             )
+            raise Exception(error)
 
 
 # TODO: Support decrypt of the parameters file
@@ -206,6 +205,7 @@ def args_validator():
             "PROJECT or ENVIRONMENT are not set, falling back to default values"
         )
 
+
 # Run validation before creating
 args_validator()
 operation = sys.argv[2]
@@ -213,24 +213,22 @@ operation = sys.argv[2]
 stack = Stack(sys.argv[1], sys.argv[2])
 
 stack.validate_cloudformation_template()
-
-if operation == "create":
-    waiter_name = stack.create_stack()
-
-if operation == "delete":
-    waiter_name = stack.delete_stack()
-
-if operation == "update":
-    waiter_name = stack.update_stack()
-
-if operation == "create_change_set":
-    waiter_name = stack.create_change_set()
-
-if operation == "delete_change_set":
-    waiter_name = stack.delete_change_set()
-    sys.exit(0)
-
-if operation == "execute_change_set":
-    waiter_name = stack.execute_change_set()
-
-stack.wait(waiter_name)
+try:
+    if operation == "create":
+        waiter_name = stack.create_stack()
+    elif operation == "delete":
+        waiter_name = stack.delete_stack()
+    elif operation == "update":
+        waiter_name = stack.update_stack()
+    elif operation == "create_change_set":
+        waiter_name = stack.create_change_set()
+    elif operation == "delete_change_set":
+        waiter_name = stack.delete_change_set()
+        sys.exit(0)
+    elif operation == "execute_change_set":
+        waiter_name = stack.execute_change_set()
+    else:
+        usage(1)
+    stack.wait(waiter_name)
+except:
+    print("ya estuvo que fallo")
