@@ -5,7 +5,14 @@ import boto3
 import botocore
 import json
 import datetime
+import logging
+
 from git import Repo
+
+logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s")
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 OPERATIONS = [
     "create",
@@ -15,6 +22,7 @@ OPERATIONS = [
     "delete_change_set",
     "execute_change_set",
 ]
+
 client = boto3.client("cloudformation")
 
 # TODO: Next session
@@ -23,9 +31,9 @@ client = boto3.client("cloudformation")
 # 3. Find a way better way to init the variables configuration
 # 4. Find a better way to call validate and call the operations
 # 5. Fix TODO for exit codes
-# 6. Implement logger
 # 8. Improve the way that waiter is called.
 # 9. Improve the name of the read_file function
+
 
 def validate_cloudformation_template(template_path):
     with open(template_path, "r") as template_file:
@@ -33,7 +41,7 @@ def validate_cloudformation_template(template_path):
         try:
             r = client.validate_template(TemplateBody=template_body)
         except botocore.exceptions.ClientError as error:
-            print(f"An error happened validating the template {error}")
+            logger.error("An error happened validating the template %s", error)
             # TODO: look for the right exit code
             sys.exit(1)
 
@@ -65,7 +73,7 @@ def create_stack(stack_name, template_path, parameters_path):
     try:
         client.create_stack(**parameters)
     except client.exceptions.AlreadyExistsException as error:
-        print(f"Stack {stack_name} already exists")
+        logger.error("Stack %s already exists", stack_name)
         # TODO: look for the right exit code
         sys.exit(1)
     return "stack_create_complete"
@@ -85,7 +93,7 @@ def update_stack(stack_name, template_path, parameters_path):
     try:
         client.update_stack(**parameters)
     except botocore.exceptions.ClientError as error:
-        print(f"An error occurred when updating {stack_name}, {error}")
+        logger.error("An error occurred when updating %s, %s", stack_name, error)
         # TODO: look for the right exit code
         sys.exit(1)
     return "stack_update_complete"
@@ -101,7 +109,7 @@ def create_change_set(stack_name, change_set_name, template_path, parameters_pat
     try:
         client.create_change_set(**parameters)
     except botocore.exceptions.ClientError as error:
-        print(f"An error occurred when creating {change_set_name}, {error}")
+        logger.error("An error occurred when creating %s, %s", change_set_name, error)
         # TODO: look for the right exit code
         sys.exit(1)
     return "change_set_create_complete"
@@ -121,24 +129,25 @@ def execute_change_set(stack_name, change_set_name):
     try:
         client.execute_change_set(**parameters)
     except client.exceptions.ChangeSetNotFoundException as error:
-        print(f"Change set {change_set_name} was not found")
+        logger.error("Change set %s was not found", change_set_name)
         # TODO: look for the right exit code
         sys.exit(1)
-
     return "stack_update_complete"
 
 
 def wait(stack_name, waiter_name, change_set_name=None):
-    print(f"waiting for operation {waiter_name} to complete")
+    logger.info("waiting for operation %s to complete", waiter_name)
     parameters = build_cloudformation_parameters(
         stack_name, change_set_name=change_set_name
     )
     waiter = client.get_waiter(waiter_name)
     try:
         waiter.wait(**parameters)
-        print(f"operation {operation} finished!")
+        logger.info(f"operation {operation} finished!")
     except botocore.exceptions.WaiterError as error:
-        print(f"An error happened waiting for the operation {operation}, {error}")
+        logger.error(
+            "An error happened waiting for the operation %s, %s", operation, error
+        )
 
 
 def usage(info, err):
@@ -181,8 +190,8 @@ def args_validator():
         os.environ["PROJECT"]
         os.environt["ENVIRONMENT"]
     except:
-        print(
-            "Warning, PROJECT or ENVIRONMENT are not set, falling back to default values"
+        logger.warning(
+            "PROJECT or ENVIRONMENT are not set, falling back to default values"
         )
 
 
