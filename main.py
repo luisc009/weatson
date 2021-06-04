@@ -253,7 +253,7 @@ try:
     else:
         usage(1)
     stack.wait(waiter_name)
-except:
-    print("ya estuvo que fallo")
+except Exception as error:
+    logger.error(error)
 finally:
     stack.clean()
