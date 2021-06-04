@@ -6,6 +6,8 @@ import botocore
 import json
 import datetime
 import logging
+import shutil
+import subprocess
 
 from git import Repo
 
@@ -26,7 +28,6 @@ OPERATIONS = [
 client = boto3.client("cloudformation")
 
 # TODO: Next session
-# 2. Integrate SOPS
 # 9. Improve the name of the read_file function
 # 10. Fix parameters for waiters
 
@@ -45,6 +46,7 @@ class Stack:
         self.stack_path = os.path.join("stacks", self.stack)
         self.stack_name = f"{self.project}-{self.stack}-{self.environment}"
         self.stack_template_file = os.path.join(self.stack_path, "template.yaml")
+        self.stack_parameters_path = os.path.join("env", "stacks", self.stack)
         self.stack_parameters_file = os.path.join(
             "env", "stacks", self.stack, f"parameters.{self.environment}.json"
         )
@@ -53,6 +55,7 @@ class Stack:
         # Git variables, used to generate the change_set_name
         self.commit = Repo().head.commit.hexsha[:6]
 
+        self.generate_parameters()
         # Generate the parameters for the CloudFormation operation
         self.parameters = self.build_cloudformation_parameters()
 
@@ -77,7 +80,7 @@ class Stack:
         if self.operation in ["create", "update", "create_change_set"]:
             parameters["TemplateBody"] = self.read_file(self.stack_template_file)
             parameters["Parameters"] = json.loads(
-                self.read_file(self.stack_parameters_file)
+                self.read_file(self.stack_tmp_parameters_file)
             )
 
         # if operation is create_change_set
@@ -155,6 +158,27 @@ class Stack:
                 "An error happened waiting for the operation %s, %s", operation, error
             )
             raise Exception(error)
+
+    def generate_parameters(self):
+        logger.info("generating parameters")
+        for file in os.listdir(self.stack_parameters_path):
+            if self.environment in file:
+                parameters_file = os.path.join(self.stack_parameters_path, file)
+                if "enc" in file:
+                    subprocess.run(
+                        [
+                            "sops",
+                            "-d",
+                            parameters_file,
+                            ">",
+                            self.stack_tmp_parameters_file,
+                        ],
+                        stdout=subprocess.DEVNULL,
+                    )
+                else:
+                    logger.debug("copying file")
+                    shutil.copyfile(parameters_file, self.stack_tmp_parameters_file)
+                break
 
 
 # TODO: Support decrypt of the parameters file
