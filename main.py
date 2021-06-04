@@ -27,10 +27,6 @@ OPERATIONS = [
 
 client = boto3.client("cloudformation")
 
-# TODO: Next session
-# 9. Improve the name of the read_file function
-# 10. Fix parameters for waiters
-
 
 class Stack:
     def __init__(self, stack, operation):
