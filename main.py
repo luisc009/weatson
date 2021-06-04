@@ -176,6 +176,9 @@ class Stack:
                     shutil.copyfile(parameters_file, self.stack_tmp_parameters_file)
                 break
 
+    def clean(self):
+        logger.info("Cleaning up the parameters")
+        subprocess.run(["rm", self.stack_tmp_parameters_file])
 
 # TODO: Support decrypt of the parameters file
 # def generate_parameters(parameters_path):
@@ -252,3 +255,5 @@ try:
     stack.wait(waiter_name)
 except:
     print("ya estuvo que fallo")
+finally:
+    stack.clean()
